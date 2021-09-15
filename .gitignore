@@ -1,5 +1,5 @@
 **/ffmpeg
-**__pycache__
-*.env
-*.gitattributes
-*.netrc
+**/__pycache__
+.gitattributes
+.netrc
+.env
