@@ -14,6 +14,8 @@ class SongQueue:
     _ctx = None
     _client = None
     _currentSongIndex = 0
+    _queueDisplayMessage = None
+    _queuePageNumber = 0
 
     # MESSAGES
 
@@ -54,7 +56,13 @@ class SongQueue:
         embed.set_author(name='Song paused',
                          icon_url=SongQueue._ctx.author.avatar_url)
         embed.add_field(name="Duration", value=str(song['duration']), inline=True)
-        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex) + '/' +
+
+        if SongQueue._currentSongIndex == 0 and len(SongQueue._queue) == 1:
+            carry = 1
+        else:
+            carry = 0
+
+        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex + carry) + '/' +
                                                         str(len(SongQueue._queue)), inline=True)
         await SongQueue._ctx.channel.send(embed=embed)
 
@@ -65,7 +73,13 @@ class SongQueue:
         embed.set_author(name='Song resumed',
                          icon_url=SongQueue._ctx.author.avatar_url)
         embed.add_field(name="Duration", value=str(song['duration']), inline=True)
-        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex) + '/' +
+
+        if SongQueue._currentSongIndex == 0 and len(SongQueue._queue) == 1:
+            carry = 1
+        else:
+            carry = 0
+
+        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex + carry) + '/' +
                                                         str(len(SongQueue._queue)), inline=True)
         await SongQueue._ctx.channel.send(embed=embed)
 
@@ -76,7 +90,13 @@ class SongQueue:
         embed.set_author(name='Song skipped',
                          icon_url=SongQueue._ctx.author.avatar_url)
         embed.add_field(name="Duration", value=str(song['duration']), inline=True)
-        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex) + '/' +
+
+        if SongQueue._currentSongIndex == 0:
+            carry = 1
+        else:
+            carry = 0
+
+        embed.add_field(name="Position in queue", value=str(SongQueue._currentSongIndex + carry) + '/' +
                                                         str(len(SongQueue._queue)), inline=True)
         await SongQueue._ctx.channel.send(embed=embed)
 
@@ -93,18 +113,34 @@ class SongQueue:
 
     @staticmethod
     async def displayQueue():
+        if SongQueue._queueDisplayMessage is not None:
+            await SongQueue._queueDisplayMessage.clear_reactions()
+
+        if len(SongQueue._queue) == 0:
+            await SongQueue.sendErrorMessage('Queue is empty')
+            return
+
         embed = discord.Embed(title=f'Queue for {SongQueue._ctx.message.guild.name}',
                               color=0xed34e4)
 
+        SongQueue._queuePageNumber = 0
         content = ''
-        idx = 1
-        for song in SongQueue._queue:
+
+        server = SongQueue._ctx.message.guild
+        voice_channel = server.voice_client
+        if voice_channel.is_playing() or voice_channel.is_paused():
+            current_song = SongQueue._queue[SongQueue._currentSongIndex - 1]
+            content += f"**Now playing**: `{SongQueue._currentSongIndex}.` [{current_song['name']}]({current_song['url']})\n\n"
+
+        idx = 0
+        while idx < min(len(SongQueue._queue), 10):
+            song = SongQueue._queue[idx]
             song_name = song['name']
             song_url = song['url']
             requester = song['requester']
             duration = song['duration']
 
-            content += f"`{idx}.` {song_name}  |  `{duration}`\n`Requested by {requester}\n`"
+            content += f"`{idx + 1}.` [{song_name}]({song_url})  |  `{duration}`\n`Requested by {requester}\n`"
             if idx < len(SongQueue._queue):
                 content += '\n'
 
@@ -115,9 +151,12 @@ class SongQueue:
             status_emoji = EMOJIS[':white_check_mark:']
         else:
             status_emoji = EMOJIS[':x:']
-        embed.set_footer(text=f'Loop queue: {status_emoji}')
+        embed.set_footer(text=f'Page: {SongQueue._queuePageNumber + 1}/{(-(-len(SongQueue._queue) // 10))} | Loop queue: {status_emoji}')
 
-        await SongQueue._ctx.channel.send(embed=embed)
+        msg = await SongQueue._ctx.channel.send(embed=embed)
+        await msg.add_reaction(EMOJIS[':black_left__pointing_double_triangle_with_vertical_bar:'])
+        await msg.add_reaction(EMOJIS[':black_right__pointing_double_triangle_with_vertical_bar:'])
+        SongQueue._queueDisplayMessage = msg
 
     @staticmethod
     async def addedPlaylistToQueue(playlist):
@@ -141,19 +180,37 @@ class SongQueue:
         SongQueue._ctx = ctx
 
     @staticmethod
+    def getCtx():
+        return SongQueue._ctx
+
+    @staticmethod
     def setClient(client):
         SongQueue._client = client
 
     @staticmethod
+    def getCurrentQueueMessage():
+        return SongQueue._queueDisplayMessage
+
+    @staticmethod
+    def setCurrentQueueMessage(value):
+        SongQueue._queueDisplayMessage = value
+
+    @staticmethod
     async def addSong(song):
+        for q_song in SongQueue._queue:
+            if q_song['url'] == song['url']:
+                await SongQueue.sendErrorMessage('Song already in queue')
+                return
         server = SongQueue._ctx.message.guild
         voice_channel = server.voice_client
-        if not voice_channel.is_playing():
+        if not voice_channel.is_playing() and not voice_channel.is_paused():
             SongQueue._queue.append(song)
             await SongQueue.messageSongAdded(song)
             await SongQueue.playSong()
         else:
             SongQueue._queue.append(song)
+            if SongQueue._currentSongIndex == 0:
+                SongQueue._currentSongIndex = len(SongQueue._queue) - 1
             await SongQueue.messageSongAdded(song)
 
     @staticmethod
@@ -172,14 +229,16 @@ class SongQueue:
     async def deleteSong(index):
         if not index.isnumeric():
             await SongQueue.sendErrorMessage("Please provide a valid index")
+            return
         elif index.isnumeric() and int(index) < 1 or int(index) > len(SongQueue._queue):
             await SongQueue.sendErrorMessage("Please provide a valid index")
+            return
 
         index = int(index) - 1
         await SongQueue.messageSongRemoved(SongQueue._queue[index])
         voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
 
-        if SongQueue._currentSongIndex > index:
+        if SongQueue._currentSongIndex >= index:
             SongQueue._currentSongIndex -= 1
 
         if voice_channel.is_playing() and SongQueue._currentSongIndex == index:
@@ -206,13 +265,53 @@ class SongQueue:
                                                                                         loop=SongQueue._ctx.bot.loop))
 
     @staticmethod
-    async def skipSong():
+    async def skipSongIndex(index):
+        if not index.isnumeric():
+            await SongQueue.sendErrorMessage("Enter a number")
+            return
+
+        index = int(index) - 1
+        if index < 0 or index >= len(SongQueue._queue):
+            await SongQueue.sendErrorMessage("Enter a valid index")
+            return
+
+        await SongQueue.messageSongSkipped(SongQueue._queue[SongQueue._currentSongIndex - 1])
+        SongQueue._currentSongIndex = index
         voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
-        if SongQueue._currentSongIndex >= len(SongQueue._queue) and SongQueue._loop:
+        voice_channel.stop()
+
+    @staticmethod
+    async def skipSong():
+        if len(SongQueue._queue) == 0:
+            await SongQueue.sendErrorMessage("Queue is empty")
+            return
+
+        if len(SongQueue._queue) == 1 and SongQueue._currentSongIndex == 1 and not SongQueue._loop:
+            voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
+
+            if voice_channel.is_playing():
+                await SongQueue.messageSongSkipped(SongQueue._queue[0])
+                voice_channel.stop()
+            else:
+                await SongQueue.sendErrorMessage("No song to skip")
+
+            return
+
+        if len(SongQueue._queue) == 1 and SongQueue._loop:
+            voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
             SongQueue._currentSongIndex = 0
+            voice_channel.stop()
+            await SongQueue.messageSongSkipped(SongQueue._queue[0])
+
+            return
+
+        voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
+        await SongQueue.messageSongSkipped(SongQueue._queue[SongQueue._currentSongIndex - 1])
 
         voice_channel.stop()
-        await SongQueue.messageSongSkipped(SongQueue._queue[SongQueue._currentSongIndex - 1])
+
+        if SongQueue._currentSongIndex >= len(SongQueue._queue) and SongQueue._loop:
+            SongQueue._currentSongIndex = 0
 
     @staticmethod
     async def pauseSong():
@@ -252,3 +351,57 @@ class SongQueue:
         SongQueue._queue.clear()
         SongQueue._loop = False
         SongQueue._currentSongIndex = 0
+
+    @staticmethod
+    async def displayQueueHandleReaction(reaction, user):
+
+        change_page = False
+
+        if reaction.emoji == EMOJIS[':black_left__pointing_double_triangle_with_vertical_bar:']:
+
+            if SongQueue._queuePageNumber > 0:
+                change_page = True
+                SongQueue._queuePageNumber -= 1
+
+        elif reaction.emoji == EMOJIS[':black_right__pointing_double_triangle_with_vertical_bar:']:
+
+            if SongQueue._queuePageNumber < (-(-len(SongQueue._queue) // 10)) - 1:
+                change_page = True
+                SongQueue._queuePageNumber += 1
+
+        if change_page:
+            embed = discord.Embed(title=f'Queue for {SongQueue._ctx.message.guild.name}',
+                                  color=0xed34e4)
+            content = ''
+
+            server = SongQueue._ctx.message.guild
+            voice_channel = server.voice_client
+            if voice_channel.is_playing() or voice_channel.is_paused():
+                current_song = SongQueue._queue[SongQueue._currentSongIndex - 1]
+                content += f"**Now playing**: `{SongQueue._currentSongIndex}.` [{current_song['name']}]({current_song['url']})\n\n"
+
+            idx = 10 * SongQueue._queuePageNumber
+            while idx < min(10 * (SongQueue._queuePageNumber + 1), len(SongQueue._queue)):
+                song = SongQueue._queue[idx]
+                song_name = song['name']
+                song_url = song['url']
+                requester = song['requester']
+                duration = song['duration']
+
+                content += f"`{idx + 1}.` [{song_name}]({song_url})  |  `{duration}`\n`Requested by {requester}\n`"
+                if idx < len(SongQueue._queue):
+                    content += '\n'
+
+                idx += 1
+
+            embed.description = content
+            if SongQueue._loop:
+                status_emoji = EMOJIS[':white_check_mark:']
+            else:
+                status_emoji = EMOJIS[':x:']
+            embed.set_footer(
+                text=f'Page: {SongQueue._queuePageNumber + 1}/{(-(-len(SongQueue._queue) // 10))} | Loop queue: {status_emoji}')
+
+            await SongQueue._queueDisplayMessage.edit(embed=embed)
+
+        await reaction.remove(user)

@@ -1,3 +1,4 @@
+import discord
 from discord.utils import get
 import re
 
@@ -10,7 +11,10 @@ def is_connected(ctx):
 
 
 async def NotifyUser(ctx, msg):
-    await ctx.send(msg)
+    embed = discord.Embed(title=msg,
+                          color=0x344245)
+
+    await ctx.channel.send(embed=embed)
 
 
 def isUrl(q_string):
@@ -38,7 +42,7 @@ async def getUrlFromQueryString(q_string):
 
 async def AddSongToQueue(ctx, q_string):
     if not ctx.message.author.voice:
-        await NotifyUser(ctx, "```You are not connected to a voice channel```")
+        await NotifyUser(ctx, "You are not connected to a voice channel")
         return
 
     channel = ctx.message.author.voice.channel

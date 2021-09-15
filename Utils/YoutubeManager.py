@@ -4,7 +4,6 @@ from Utils.YTDLSource import YTDLSource
 
 youtube_dl.utils.bug_reports_message = lambda: ''
 
-
 class YoutubeManager:
     _ytdl_format_options = {
                             'format': 'bestaudio/best',
