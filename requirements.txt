@@ -1,0 +1,6 @@
+youtube_dl==2021.6.6
+discord.py==1.7.3
+emoji==1.4.2
+discord==1.7.3
+google_api_python_client==2.21.0
+python-decouple==3.4
