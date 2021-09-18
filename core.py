@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord.utils import get
+import asyncio
 
 from Commands import LeaveVoiceChannel, AddSongToQueue
 from Utils import YoutubeManager, SongQueue, YoutubeSearch
@@ -60,6 +61,17 @@ async def on_command_error(ctx, error):
         await sendNoCommandFoundError(ctx)
     else:
         raise error
+
+
+@client.event
+async def on_voice_state_update(member, before, after):
+    if after.channel is None and not member.bot:
+        voice_channel = client.get_channel(before.channel.id)
+        members = voice_channel.members
+        if len(members) == 1 and members[0].id == client.user.id:
+            print(f'alone in vc {before.channel.id}')
+            await asyncio.sleep(delay=20, loop=client.loop)
+            await LeaveVoiceChannel(vc=voice_channel)
 
 
 # COMMANDS
@@ -226,7 +238,7 @@ async def stop(ctx):
     elif not ctx.author.voice:
         await sendUserNotInVC(ctx)
         return
-    await LeaveVoiceChannel(ctx)
+    await LeaveVoiceChannel(ctx=ctx)
 
 
 class Core:

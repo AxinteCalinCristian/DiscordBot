@@ -11,12 +11,18 @@ async def NotifyUser(ctx, msg):
     await ctx.send(embed=embed)
 
 
-async def LeaveVoiceChannel(ctx):
-    await NotifyUser(ctx, 'Leaving the voice channel')
-    voice_client = ctx.message.guild.voice_client
-    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+async def LeaveVoiceChannel(ctx=None, vc=None):
+    if ctx is not None:
+        await NotifyUser(ctx, 'Leaving the voice channel')
+        voice_client = ctx.message.guild.voice_client
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+    else:
+        SongQueue.setVoiceChannelID(vc.id)
+        voice_client = vc.members[0].guild.voice_client
+
     if SongQueue.getCurrentQueueMessage() is not None:
         await SongQueue.getCurrentQueueMessage().clear_reactions()
+        SongQueue.setCurrentQueueMessage(None)
+
     await voice_client.disconnect()
-    SongQueue.setCurrentQueueMessage(None)
     SongQueue.clearQueue()
