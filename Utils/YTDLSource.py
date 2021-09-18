@@ -2,6 +2,7 @@ import asyncio
 import discord
 import datetime
 
+
 class YTDLSource(discord.PCMVolumeTransformer):
     _data = None
     _title = None
@@ -42,8 +43,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         else:
             filename = url if stream else ytld.prepare_filename(data)
 
-        return cls(discord.FFmpegPCMAudio(source=filename, **ffmpeg_options,
-                                          executable="./ffmpeg/bin/ffmpeg.exe",), is_playlist=is_playlist, playlist_url=url, data=data)
+        return cls(discord.FFmpegPCMAudio(source=filename, **ffmpeg_options), is_playlist=is_playlist, playlist_url=url, data=data)
 
     def getPlaylistSongs(self):
         songs = []
