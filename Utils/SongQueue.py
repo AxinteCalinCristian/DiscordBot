@@ -1,11 +1,9 @@
 import asyncio
-import json
 import discord
 from emoji import EMOJI_ALIAS_UNICODE_ENGLISH as EMOJIS
 
 from discord.utils import get
 from Utils.YoutubeManager import YoutubeManager
-from Utils.clearAudioFilesFolder import deleteAudioFiles
 
 
 class SongQueue:
@@ -16,6 +14,7 @@ class SongQueue:
     _currentSongIndex = 0
     _queueDisplayMessage = None
     _queuePageNumber = 0
+    _vc_id = None
 
     # MESSAGES
 
@@ -55,6 +54,7 @@ class SongQueue:
                               color=0x0c0c87)
         embed.set_author(name='Song paused',
                          icon_url=SongQueue._ctx.author.avatar_url)
+
         embed.add_field(name="Duration", value=str(song['duration']), inline=True)
 
         if SongQueue._currentSongIndex == 0 and len(SongQueue._queue) == 1:
@@ -129,8 +129,13 @@ class SongQueue:
         server = SongQueue._ctx.message.guild
         voice_channel = server.voice_client
         if voice_channel.is_playing() or voice_channel.is_paused():
+            if SongQueue._currentSongIndex == 0:
+                carry = 1
+            else:
+                carry = 0
+
             current_song = SongQueue._queue[SongQueue._currentSongIndex - 1]
-            content += f"**Now playing**: `{SongQueue._currentSongIndex}.` [{current_song['name']}]({current_song['url']})\n\n"
+            content += f"**Now playing**: `{SongQueue._currentSongIndex + carry}.` [{current_song['name']}]({current_song['url']})\n\n"
 
         idx = 0
         while idx < min(len(SongQueue._queue), 10):
@@ -173,6 +178,13 @@ class SongQueue:
 
         await SongQueue._ctx.channel.send(embed=embed)
 
+    @staticmethod
+    async def sendClearQueueMessage():
+        embed = discord.Embed(title='Song queue cleared',
+                              color=0x7104b5)
+
+        await SongQueue._ctx.channel.send(embed=embed)
+
     # ACTIONS
 
     @staticmethod
@@ -182,6 +194,14 @@ class SongQueue:
     @staticmethod
     def getCtx():
         return SongQueue._ctx
+
+    @staticmethod
+    def setVoiceChannelID(vc_id):
+        SongQueue._vc_id = str(vc_id)
+
+    @staticmethod
+    def getVoiceChannelID():
+        return SongQueue._vc_id
 
     @staticmethod
     def setClient(client):
@@ -228,6 +248,10 @@ class SongQueue:
     @staticmethod
     async def deleteSong(index):
         if not index.isnumeric():
+            if index == 'all':
+                SongQueue.clearQueue()
+                await SongQueue.sendClearQueueMessage()
+                return
             await SongQueue.sendErrorMessage("Please provide a valid index")
             return
         elif index.isnumeric() and int(index) < 1 or int(index) > len(SongQueue._queue):
@@ -250,11 +274,11 @@ class SongQueue:
     async def playSong():
         if SongQueue._currentSongIndex < len(SongQueue._queue):
             voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
-
             song = SongQueue._queue[SongQueue._currentSongIndex]
             song_url = song['url']
 
-            await SongQueue.messageSongPlaying(song)
+            if voice_channel.is_connected():
+                await SongQueue.messageSongPlaying(song)
             SongQueue._currentSongIndex += 1
 
             if SongQueue._loop and SongQueue._currentSongIndex == len(SongQueue._queue):
@@ -342,15 +366,22 @@ class SongQueue:
 
         SongQueue._loop = not SongQueue._loop
         await SongQueue.messageLoopQueueStatus()
-        if SongQueue._currentSongIndex == len(SongQueue._queue) and not voice_channel.is_playing():
+        if SongQueue._currentSongIndex == len(SongQueue._queue):
             SongQueue._currentSongIndex = 0
-            await SongQueue.playSong()
+            if not voice_channel.is_playing():
+                await SongQueue.playSong()
 
     @staticmethod
     def clearQueue():
         SongQueue._queue.clear()
         SongQueue._loop = False
         SongQueue._currentSongIndex = 0
+
+        server = SongQueue._ctx.message.guild
+        voice_channel = server.voice_client
+
+        if voice_channel.is_playing() or voice_channel.is_paused():
+            voice_channel.stop()
 
     @staticmethod
     async def displayQueueHandleReaction(reaction, user):
@@ -377,8 +408,13 @@ class SongQueue:
             server = SongQueue._ctx.message.guild
             voice_channel = server.voice_client
             if voice_channel.is_playing() or voice_channel.is_paused():
+                if SongQueue._currentSongIndex == 0:
+                    carry = 1
+                else:
+                    carry = 0
+
                 current_song = SongQueue._queue[SongQueue._currentSongIndex - 1]
-                content += f"**Now playing**: `{SongQueue._currentSongIndex}.` [{current_song['name']}]({current_song['url']})\n\n"
+                content += f"**Now playing**: `{SongQueue._currentSongIndex + carry}.` [{current_song['name']}]({current_song['url']})\n\n"
 
             idx = 10 * SongQueue._queuePageNumber
             while idx < min(10 * (SongQueue._queuePageNumber + 1), len(SongQueue._queue)):

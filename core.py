@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.utils import get
 
 from Commands import LeaveVoiceChannel, AddSongToQueue
@@ -18,10 +18,25 @@ def is_connected(ctx):
 
 
 async def sendNotInVoiceChannel(ctx):
-    embed = discord.Embed(title='Not in a voice channel',
+    embed = discord.Embed(title=f'**{client.user.display_name}** is not in a voice channel',
                           color=0x344245)
 
     await ctx.channel.send(embed=embed)
+
+
+async def sendUserNotInVC(ctx):
+    embed = discord.Embed(title=f'{ctx.author.display_name} please join a channel to issue commands',
+                          color=0x344245)
+
+    await ctx.channel.send(embed=embed)
+
+
+async def sendNoCommandFoundError(ctx):
+    embed = discord.Embed(title=f'No such command or incomplete command',
+                          color=0x344245)
+
+    await ctx.channel.send(embed=embed)
+
 
 # EVENTS
 
@@ -37,6 +52,14 @@ async def on_reaction_add(reaction, user):
 
     if reaction.message.id == SongQueue.getCurrentQueueMessage().id:
         await SongQueue.displayQueueHandleReaction(reaction, user)
+
+
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await sendNoCommandFoundError(ctx)
+    else:
+        raise error
 
 
 # COMMANDS
@@ -56,22 +79,62 @@ async def displayQueue(ctx, *args):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
-    if len(args) > 0 and args[0] == 'loop':
-        SongQueue.setCtx(ctx)
-        await SongQueue.loopQueue()
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    elif len(args) > 0:
+        if args[0] == 'loop':
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            await SongQueue.loopQueue()
+        elif args[0] == 'clear':
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            SongQueue.clearQueue()
+            await SongQueue.sendClearQueueMessage()
+        else:
+            await sendNoCommandFoundError(ctx)
     else:
         SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
         await SongQueue.displayQueue()
 
 
 @client.command(name='loop', help='Toggles queue looping')
-async def loopQueue(ctx, args):
+async def loopQueue(ctx, *args):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
-    if args == 'queue':
-        SongQueue.setCtx(ctx)
-        await SongQueue.loopQueue()
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    if len(args) > 0:
+        if args[0] == 'queue':
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            await SongQueue.loopQueue()
+        else:
+            await sendNoCommandFoundError(ctx)
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='clear', help='Clears queue')
+async def clearQueue(ctx, *args):
+    if not is_connected(ctx):
+        await sendNotInVoiceChannel(ctx)
+        return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    if len(args) > 0:
+        if args[0] == 'queue':
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            SongQueue.clearQueue()
+            await SongQueue.sendClearQueueMessage()
+        else:
+            await sendNoCommandFoundError(ctx)
 
 
 @client.command(name='remove', help='Removes song at provided index from queue')
@@ -79,7 +142,11 @@ async def removeSong(ctx, index):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     await SongQueue.deleteSong(index)
 
 
@@ -88,7 +155,11 @@ async def skipSong(ctx, *args):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     if len(args) > 0:
         await SongQueue.skipSongIndex(args[0])
     else:
@@ -100,7 +171,11 @@ async def skipSong(ctx):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     await SongQueue.skipSong()
 
 
@@ -109,7 +184,11 @@ async def pauseSong(ctx):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     await SongQueue.pauseSong()
 
 
@@ -118,7 +197,11 @@ async def pauseSong(ctx):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     await SongQueue.pauseSong()
 
 
@@ -127,7 +210,11 @@ async def resumeSong(ctx):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
         return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
     SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
     await SongQueue.resumeSong()
 
 
@@ -135,6 +222,9 @@ async def resumeSong(ctx):
 async def stop(ctx):
     if not is_connected(ctx):
         await sendNotInVoiceChannel(ctx)
+        return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
         return
     await LeaveVoiceChannel(ctx)
 

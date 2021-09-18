@@ -14,7 +14,9 @@ async def NotifyUser(ctx, msg):
 async def LeaveVoiceChannel(ctx):
     await NotifyUser(ctx, 'Leaving the voice channel')
     voice_client = ctx.message.guild.voice_client
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+    if SongQueue.getCurrentQueueMessage() is not None:
+        await SongQueue.getCurrentQueueMessage().clear_reactions()
     await voice_client.disconnect()
-    await SongQueue.getCurrentQueueMessage().clear_reactions()
     SongQueue.setCurrentQueueMessage(None)
     SongQueue.clearQueue()

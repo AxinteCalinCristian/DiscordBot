@@ -59,22 +59,27 @@ async def AddSongToQueue(ctx, q_string):
     else:
         url = await getUrlFromQueryString(q_string)
 
-    if not is_playlist:
-        player = await YoutubeManager.GetYTLDSource(url=url)
+    if url != '':
+        if not is_playlist:
+            player = await YoutubeManager.GetYTLDSource(url=url)
 
-        song = {'name': player.getSongName(), 'url': url, 'requester': ctx.message.author,
-                'duration': player.getSongDuration()}
+            song = {'name': player.getSongName(), 'url': url, 'requester': ctx.message.author,
+                    'duration': player.getSongDuration()}
 
-        SongQueue.setCtx(ctx)
-        await SongQueue.addSong(song=song)
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            await SongQueue.addSong(song=song)
+        else:
+            player = await YoutubeManager.GetYTLDSource(url=url)
+            songs = player.getPlaylistSongs()
+
+            for song in songs:
+                song['requester'] = ctx.message.author
+
+            playlist = {'name': player.getPlaylistName(), 'url': player.getPlaylistUrl(), 'songs': songs}
+
+            SongQueue.setCtx(ctx)
+            SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+            await SongQueue.addPlaylist(playlist)
     else:
-        player = await YoutubeManager.GetYTLDSource(url=url)
-        songs = player.getPlaylistSongs()
-
-        for song in songs:
-            song['requester'] = ctx.message.author
-
-        playlist = {'name': player.getPlaylistName(), 'url': player.getPlaylistUrl(), 'songs': songs}
-
-        SongQueue.setCtx(ctx)
-        await SongQueue.addPlaylist(playlist)
+        await NotifyUser(ctx, 'No songs found')

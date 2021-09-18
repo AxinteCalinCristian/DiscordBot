@@ -13,12 +13,14 @@ class YoutubeSearch:
         return build("youtube", "v3", developerKey=YoutubeSearch._google_api_key)
 
     @staticmethod
-    def search(term):
+    async def search(term):
+        no_of_results = 10
         service = YoutubeSearch.get_service()
         response = service.search().list(
             part="id,snippet",
             q=term,
-            maxResults=10
+            safeSearch='strict',
+            maxResults=no_of_results
         ).execute()
 
         url = 'https://www.youtube.com/watch?v='
@@ -29,9 +31,14 @@ class YoutubeSearch:
             if search_result['id']['kind'] == 'youtube#video':
                 videos.append(search_result['id']['videoId'])
 
-        url += videos[0]
+        if len(videos):
+            url += videos[0]
+        else:
+            url = ''
+
         return url
 
     @staticmethod
     async def getUrl(q_string):
-        return YoutubeSearch.search(q_string)
+        url = await YoutubeSearch.search(q_string)
+        return url
