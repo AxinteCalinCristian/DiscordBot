@@ -75,9 +75,9 @@ async def on_voice_state_update(member, before, after):
         global leave_voice_channel
         if after.channel is None:
             voice_channel = client.get_channel(before.channel.id)
-            leave_voice_channel = asyncio.create_task(leaveVC(voice_channel))
             members = voice_channel.members
             if len(members) == 1 and members[0].id == client.user.id:
+                leave_voice_channel = asyncio.create_task(leaveVC(voice_channel))
                 await leave_voice_channel
         else:
             voice_channel = client.get_channel(after.channel.id)
