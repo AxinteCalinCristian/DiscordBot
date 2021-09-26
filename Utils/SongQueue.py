@@ -265,6 +265,9 @@ class SongQueue:
             if index == 'all':
                 SongQueue.clearQueue()
                 await SongQueue.sendClearQueueMessage()
+                voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
+                if voice_channel.is_playing() or voice_channel.is_paused() :
+                    voice_channel.stop()
                 return
             await SongQueue.sendErrorMessage("Please provide a valid index")
             return
