@@ -40,11 +40,6 @@ async def sendNoCommandFoundError(ctx):
     await ctx.channel.send(embed=embed)
 
 
-async def leaveVC(voice_channel):
-    await asyncio.sleep(delay=20, loop=client.loop)
-    await LeaveVoiceChannel(vc=voice_channel)
-
-
 # EVENTS
 
 @client.event
@@ -67,28 +62,6 @@ async def on_command_error(ctx, error):
         await sendNoCommandFoundError(ctx)
     else:
         raise error
-
-
-@client.event
-async def on_voice_state_update(member, before, after):
-    if not member.bot:
-        global leave_voice_channel
-        if after.channel is None:
-            voice_channel = client.get_channel(before.channel.id)
-            members = voice_channel.members
-            if len(members) == 1 and members[0].id == client.user.id:
-                leave_voice_channel = asyncio.create_task(leaveVC(voice_channel))
-                await leave_voice_channel
-        else:
-            voice_channel = client.get_channel(after.channel.id)
-            members = voice_channel.members
-
-            if len(members) > 1:
-                for member in members:
-                    if client.user.id == member.id:
-                        if leave_voice_channel is not None:
-                            leave_voice_channel.cancel()
-                            leave_voice_channel = None
 
 
 # COMMANDS
