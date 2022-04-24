@@ -15,7 +15,10 @@ class SongQueue:
     _queueDisplayMessage = {}
     _queuePageNumber = {}
     _vc_id = None
-
+    _peek_queue = {}
+    _peek_queueDisplayMessage = {}
+    _peek_queuePageNumber = {}
+    _peek_queue_names = {}
     # MESSAGES
 
     @staticmethod
@@ -168,6 +171,70 @@ class SongQueue:
         SongQueue._queueDisplayMessage[SongQueue._vc_id] = msg
 
     @staticmethod
+    async def peekQueue():
+        if SongQueue._peek_queueDisplayMessage[SongQueue._vc_id] is not None:
+            await SongQueue._peek_queueDisplayMessage[SongQueue._vc_id].clear_reactions()
+
+        if len(SongQueue._peek_queue[SongQueue._vc_id]) == 0:
+            await SongQueue.sendErrorMessage('Queue is empty')
+            return
+
+        embed = discord.Embed(title=f'Peeking queue {SongQueue._peek_queue_names[SongQueue._vc_id]}',
+                              color=0xed34e4)
+
+        SongQueue._queuePageNumber[SongQueue._vc_id] = 0
+        content = ''
+
+        idx = 0
+        while idx < min(len(SongQueue._peek_queue[SongQueue._vc_id]), 10):
+            song = SongQueue._peek_queue[SongQueue._vc_id][idx]
+            song_name = song['name']
+            song_url = song['url']
+            content += f"`{idx + 1}.` [{song_name}]({song_url})"
+
+            if idx < len(SongQueue._peek_queue[SongQueue._vc_id]):
+                content += '\n'
+
+            idx += 1
+
+        embed.description = content
+        embed.set_footer(
+            text=f'Page: {SongQueue._peek_queuePageNumber[SongQueue._vc_id] + 1}/{(-(-len(SongQueue._peek_queue[SongQueue._vc_id]) // 10))}')
+
+        msg = await SongQueue._ctx.channel.send(embed=embed)
+        await msg.add_reaction(EMOJIS[':black_left__pointing_double_triangle_with_vertical_bar:'])
+        await msg.add_reaction(EMOJIS[':black_right__pointing_double_triangle_with_vertical_bar:'])
+        SongQueue._peek_queueDisplayMessage[SongQueue._vc_id] = msg
+
+    @staticmethod
+    async def loadPlaylist(playlist):
+        SongQueue.clearQueue()
+        server = SongQueue._ctx.message.guild
+        voice_channel = server.voice_client
+        for song in playlist:
+            if not voice_channel.is_playing() and not voice_channel.is_paused():
+                SongQueue._queue[SongQueue._vc_id].append(song)
+                await SongQueue.playSong()
+            else:
+                SongQueue._queue[SongQueue._vc_id].append(song)
+                if SongQueue._currentSongIndex[SongQueue._vc_id] == 0:
+                    SongQueue._currentSongIndex[SongQueue._vc_id] = len(SongQueue._queue[SongQueue._vc_id]) - 1
+        await SongQueue.skipSongIndex('1', False)
+
+    @staticmethod
+    async def appendPlaylist(playlist):
+        server = SongQueue._ctx.message.guild
+        voice_channel = server.voice_client
+        for song in playlist:
+            if not voice_channel.is_playing() and not voice_channel.is_paused():
+                SongQueue._queue[SongQueue._vc_id].append(song)
+                await SongQueue.playSong()
+            else:
+                SongQueue._queue[SongQueue._vc_id].append(song)
+                if SongQueue._currentSongIndex[SongQueue._vc_id] == 0:
+                    SongQueue._currentSongIndex[SongQueue._vc_id] = len(SongQueue._queue[SongQueue._vc_id]) - 1
+
+    @staticmethod
     async def addedPlaylistToQueue(playlist):
         embed = discord.Embed(title=playlist['name'], url=playlist['url'],
                               color=0x18b549)
@@ -205,13 +272,24 @@ class SongQueue:
         if not (SongQueue._vc_id in SongQueue._queue.keys()):
             SongQueue._queue[SongQueue._vc_id] = []
         if not (SongQueue._vc_id in SongQueue._loop.keys()):
-            SongQueue._loop[SongQueue._vc_id] = False
+            SongQueue._loop[SongQueue._vc_id] = True
         if not (SongQueue._vc_id in SongQueue._currentSongIndex.keys()):
             SongQueue._currentSongIndex[SongQueue._vc_id] = 0
         if not (SongQueue._vc_id in SongQueue._queueDisplayMessage.keys()):
             SongQueue._queueDisplayMessage[SongQueue._vc_id] = None
         if not (SongQueue._vc_id in SongQueue._queuePageNumber.keys()):
             SongQueue._queuePageNumber[SongQueue._vc_id] = 0
+        if not (SongQueue._vc_id in SongQueue._peek_queue.keys()):
+            SongQueue._peek_queue[SongQueue._vc_id] = []
+        if not (SongQueue._vc_id in SongQueue._peek_queueDisplayMessage.keys()):
+            SongQueue._peek_queueDisplayMessage[SongQueue._vc_id] = None
+        if not (SongQueue._vc_id in SongQueue._peek_queuePageNumber.keys()):
+            SongQueue._peek_queuePageNumber[SongQueue._vc_id] = 0
+
+    @staticmethod
+    def setPeekQueue(data, name):
+        SongQueue._peek_queue[SongQueue._vc_id] = data
+        SongQueue._peek_queue_names[SongQueue._vc_id] = name
 
     @staticmethod
     def getVoiceChannelID():
@@ -226,8 +304,16 @@ class SongQueue:
         return SongQueue._queueDisplayMessage[SongQueue._vc_id]
 
     @staticmethod
+    def getCurrentPeekQueueMessage():
+        return SongQueue._peek_queueDisplayMessage[SongQueue._vc_id]
+
+    @staticmethod
     def setCurrentQueueMessage(value):
         SongQueue._queueDisplayMessage[SongQueue._vc_id] = value
+
+    @staticmethod
+    def setCurrentPeekQueueMessage(value):
+        SongQueue._peek_queueDisplayMessage[SongQueue._vc_id] = value
 
     @staticmethod
     async def addSong(song):
@@ -307,18 +393,20 @@ class SongQueue:
                                                                                         loop=SongQueue._ctx.bot.loop))
 
     @staticmethod
-    async def skipSongIndex(index):
+    async def skipSongIndex(index, info=True):
         if not index.isnumeric():
-            await SongQueue.sendErrorMessage("Enter a number")
+            if info:
+                await SongQueue.sendErrorMessage("Enter a number")
             return
 
         index = int(index) - 1
         if index < 0 or index >= len(SongQueue._queue[SongQueue._vc_id]):
-            await SongQueue.sendErrorMessage("Enter a valid index")
+            if info:
+                await SongQueue.sendErrorMessage("Enter a valid index")
             return
-
-        await SongQueue.messageSongSkipped(
-            SongQueue._queue[SongQueue._vc_id][SongQueue._currentSongIndex[SongQueue._vc_id] - 1])
+        if info:
+            await SongQueue.messageSongSkipped(
+                SongQueue._queue[SongQueue._vc_id][SongQueue._currentSongIndex[SongQueue._vc_id] - 1])
         SongQueue._currentSongIndex[SongQueue._vc_id] = index
         voice_channel = get(SongQueue._ctx.bot.voice_clients, guild=SongQueue._ctx.guild)
         voice_channel.stop()
@@ -396,9 +484,18 @@ class SongQueue:
                 await SongQueue.playSong()
 
     @staticmethod
+    def getQueue():
+        urls = []
+        names = []
+        for song in SongQueue._queue[SongQueue._vc_id]:
+            urls.append(song['url'])
+            names.append(song['name'])
+        return urls, names
+
+    @staticmethod
     def clearQueue():
         SongQueue._queue[SongQueue._vc_id].clear()
-        SongQueue._loop[SongQueue._vc_id] = False
+        SongQueue._loop[SongQueue._vc_id] = True
         SongQueue._currentSongIndex[SongQueue._vc_id] = 0
 
     @staticmethod
@@ -458,5 +555,48 @@ class SongQueue:
                 text=f'Page: {SongQueue._queuePageNumber[SongQueue._vc_id] + 1}/{(-(-len(SongQueue._queue[SongQueue._vc_id]) // 10))} | Loop queue: {status_emoji}')
 
             await SongQueue._queueDisplayMessage[SongQueue._vc_id].edit(embed=embed)
+
+        await reaction.remove(user)
+
+    @staticmethod
+    async def displayPeekQueueHandleReaction(reaction, user):
+
+        change_page = False
+
+        if reaction.emoji == EMOJIS[':black_left__pointing_double_triangle_with_vertical_bar:']:
+
+            if SongQueue._peek_queuePageNumber[SongQueue._vc_id] > 0:
+                change_page = True
+                SongQueue._peek_queuePageNumber[SongQueue._vc_id] -= 1
+
+        elif reaction.emoji == EMOJIS[':black_right__pointing_double_triangle_with_vertical_bar:']:
+
+            if SongQueue._peek_queuePageNumber[SongQueue._vc_id] < (-(-len(SongQueue._peek_queue[SongQueue._vc_id]) // 10)) - 1:
+                change_page = True
+                SongQueue._peek_queuePageNumber[SongQueue._vc_id] += 1
+
+        if change_page:
+            embed = discord.Embed(title=f'Peeking queue {SongQueue._peek_queue_names[SongQueue._vc_id]}',
+                                  color=0xed34e4)
+            content = ''
+
+            idx = 10 * SongQueue._peek_queuePageNumber[SongQueue._vc_id]
+            while idx < min(10 * (SongQueue._peek_queuePageNumber[SongQueue._vc_id] + 1),
+                            len(SongQueue._peek_queue[SongQueue._vc_id])):
+                song = SongQueue._peek_queue[SongQueue._vc_id][idx]
+                song_name = song['name']
+                song_url = song['url']
+                content += f"`{idx + 1}.` [{song_name}]({song_url})"
+                if idx < len(SongQueue._peek_queue[SongQueue._vc_id]):
+                    content += '\n'
+
+                idx += 1
+
+            embed.description = content
+
+            embed.set_footer(
+                text=f'Page: {SongQueue._peek_queuePageNumber[SongQueue._vc_id] + 1}/{(-(-len(SongQueue._peek_queue[SongQueue._vc_id]) // 10))}')
+
+            await SongQueue._peek_queueDisplayMessage[SongQueue._vc_id].edit(embed=embed)
 
         await reaction.remove(user)

@@ -1,18 +1,39 @@
 import discord
 from discord.ext import commands
 from discord.utils import get
-import asyncio
+from Utils.FirebaseConnection import FirebaseConnection
 
-from Commands import LeaveVoiceChannel, AddSongToQueue
+from Commands import LeaveVoiceChannel, AddSongToQueue, LoadPlaylist
 from Utils import YoutubeManager, SongQueue, YoutubeSearch
 
 client = commands.Bot(command_prefix='-')
 YoutubeManager.setClient(client)
 SongQueue.setClient(client)
 leave_voice_channel = None
+firebase = FirebaseConnection()
 
 
 # UTILS
+
+cmds = {
+    'save': 'Saves playlist to database',
+    'overwrite': 'Overwrites playlist in database',
+    'peek': 'Peeks playlist contents',
+    'load': 'Loads playlist contents',
+    'append': 'Loads playlist contents',
+    'playlists': 'Displays all the playlists',
+    'play': 'Adds song to queue',
+    'queue': 'Displays the queue',
+    'loop': 'Toggles queue looping',
+    'clear': 'Clears queue',
+    'remove': 'Removes song at provided index from queue',
+    'skip': 'Skips current song',
+    'next': 'Skips current song',
+    'pause': 'Skips current song',
+    'stop': 'Pauses current song',
+    'leave': 'Makes bot leave the voice channel'
+}
+
 
 def is_connected(ctx):
     voice_client = get(ctx.bot.voice_clients, guild=ctx.guild)
@@ -40,6 +61,51 @@ async def sendNoCommandFoundError(ctx):
     await ctx.channel.send(embed=embed)
 
 
+async def sendPlaylistError(ctx, resp):
+    embed = discord.Embed(title=resp,
+                          color=0xf74514)
+
+    await ctx.channel.send(embed=embed)
+
+
+async def sendPlaylistSaved(ctx, resp):
+    embed = discord.Embed(title=resp,
+                          color=0x18b549)
+
+    await ctx.channel.send(embed=embed)
+
+
+async def sendPlaylists(ctx, resp):
+    embed = discord.Embed(title=f'Listing playlists for {ctx.message.guild.name}',
+                          color=0x63b7f2)
+    content = ''
+    if len(resp) == 0:
+        content = 'No saved playlists'
+    else:
+        for idx, pl in enumerate(resp):
+            content += '**' + pl['name'] + '**' + f" ({pl['size']} songs)"
+            if idx < len(resp) - 1:
+                content += '\n'
+
+    embed.description = content
+    await ctx.channel.send(embed=embed)
+
+
+async def printCommands(ctx):
+    embed = discord.Embed(title=f'All available commands',
+                          color=0x63b7f2)
+    content = ''
+    if len(cmds) == 0:
+        content = 'No saved playlists'
+    else:
+        for idx, cmd in enumerate(cmds.keys()):
+            content += '**' + cmd + '**' + f" | {cmds[cmd]}"
+            if idx < len(cmds) - 1:
+                content += '\n'
+
+    embed.description = content
+    await ctx.channel.send(embed=embed)
+
 # EVENTS
 
 @client.event
@@ -52,8 +118,10 @@ async def on_reaction_add(reaction, user):
     if user.bot:
         return
 
-    if reaction.message.id == SongQueue.getCurrentQueueMessage().id:
+    if SongQueue.getCurrentQueueMessage() is not None and reaction.message.id == SongQueue.getCurrentQueueMessage().id:
         await SongQueue.displayQueueHandleReaction(reaction, user)
+    elif SongQueue.getCurrentPeekQueueMessage() is not None and reaction.message.id == SongQueue.getCurrentPeekQueueMessage().id:
+        await SongQueue.displayPeekQueueHandleReaction(reaction, user)
 
 
 @client.event
@@ -65,6 +133,147 @@ async def on_command_error(ctx, error):
 
 
 # COMMANDS
+
+@client.command(name='commands', help='Displays all the commands')
+async def commands(ctx, *args):
+    if len(args) > 0:
+        await sendNoCommandFoundError(ctx)
+
+    if not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+
+    await printCommands(ctx)
+
+
+@client.command(name='save', help='Saves playlist to database')
+async def save_playlist(ctx, *args):
+    if not is_connected(ctx):
+        await sendNotInVoiceChannel(ctx)
+        return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    if len(args) > 1:
+        SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+        if args[0] != 'as':
+            await sendNoCommandFoundError(ctx)
+            return
+        status, resp = firebase.addPlaylist(name=args[1], disc_id=SongQueue.getVoiceChannelID(), data=SongQueue.getQueue())
+        if not status:
+            await sendPlaylistError(ctx, resp)
+        else:
+            await sendPlaylistSaved(ctx, resp)
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='overwrite', help='Overwrites playlist in database')
+async def overwrite_playlist(ctx, *args):
+    if not is_connected(ctx):
+        await sendNotInVoiceChannel(ctx)
+        return
+    elif not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    if len(args) > 0:
+        SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+        status, resp = firebase.addPlaylist(name=args[0], disc_id=SongQueue.getVoiceChannelID(), data=SongQueue.getQueue(), force=True)
+        if not status:
+            await sendPlaylistError(ctx, resp)
+        else:
+            await sendPlaylistSaved(ctx, resp)
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='peek', help='Peeks playlist contents')
+async def peek_playlist(ctx, *args):
+    if not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+    if len(args) > 0:
+        SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+        status, resp = firebase.peekPlaylist(name=args[0], disc_id=SongQueue.getVoiceChannelID())
+        if not status:
+            await sendPlaylistError(ctx, resp)
+        else:
+            SongQueue.setPeekQueue(resp, args[0])
+            await SongQueue.peekQueue()
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='load', help='Loads playlist contents')
+async def load_playlist(ctx, *args):
+    if not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+    if len(args) > 0:
+        SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+        status, resp = firebase.getPlaylist(name=args[0], disc_id=SongQueue.getVoiceChannelID())
+        if not status:
+            await sendPlaylistError(ctx, resp)
+        else:
+            songs = await LoadPlaylist(ctx, resp)
+            await SongQueue.loadPlaylist(songs)
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='append', help='Loads playlist contents')
+async def append_playlist(ctx, *args):
+    if not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+    if len(args) > 0:
+        SongQueue.setCtx(ctx)
+        SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+        status, resp = firebase.getPlaylist(name=args[0], disc_id=SongQueue.getVoiceChannelID())
+        if not status:
+            await sendPlaylistError(ctx, resp)
+        else:
+            songs = await LoadPlaylist(ctx, resp)
+            await SongQueue.appendPlaylist(songs)
+    else:
+        await sendNoCommandFoundError(ctx)
+
+
+@client.command(name='playlists', help='Displays all the playlists')
+async def playlists(ctx, *args):
+    if len(args) > 0:
+        await sendNoCommandFoundError(ctx)
+
+    if not ctx.author.voice:
+        await sendUserNotInVC(ctx)
+        return
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+    resp = firebase.getPlaylists()
+    await sendPlaylists(ctx, resp)
+
 
 @client.command(name='play', help='Adds song to queue')
 async def play(ctx, *args):

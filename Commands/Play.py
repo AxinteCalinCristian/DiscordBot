@@ -83,3 +83,26 @@ async def AddSongToQueue(ctx, q_string):
             await SongQueue.addPlaylist(playlist)
     else:
         await NotifyUser(ctx, 'No songs found')
+
+
+async def LoadPlaylist(ctx, urls):
+    if not ctx.message.author.voice:
+        await NotifyUser(ctx, "You are not connected to a voice channel")
+        return []
+
+    channel = ctx.message.author.voice.channel
+    if not is_connected(ctx):
+        await channel.connect()
+        await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
+
+    song_list = []
+
+    for url in urls:
+        player = await YoutubeManager.GetYTLDSource(url=url)
+
+        song = {'name': player.getSongName(), 'url': url, 'requester': ctx.message.author,
+                'duration': player.getSongDuration()}
+
+        song_list.append(song)
+
+    return song_list
