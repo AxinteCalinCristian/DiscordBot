@@ -4,3 +4,4 @@
 .netrc
 .env
 serviceAccountKey.json
+.idea
