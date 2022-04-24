@@ -29,8 +29,8 @@ cmds = {
     'remove': 'Removes song at provided index from queue',
     'skip': 'Skips current song',
     'next': 'Skips current song',
-    'pause': 'Skips current song',
-    'stop': 'Pauses current song',
+    'pause': 'Pauses current song',
+    'stop': 'Stops current song',
     'leave': 'Makes bot leave the voice channel'
 }
 
