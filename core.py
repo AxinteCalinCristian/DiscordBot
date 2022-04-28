@@ -16,18 +16,18 @@ firebase = FirebaseConnection()
 # UTILS
 
 cmds = {
-    'save': 'Saves playlist to database',
-    'overwrite': 'Overwrites playlist in database',
-    'peek': 'Peeks playlist contents',
-    'load': 'Loads playlist contents',
-    'append': 'Loads playlist contents',
+    'save as <name>': 'Saves playlist to database',
+    'overwrite <name>': 'Overwrites playlist in database',
+    'peek <name>': 'Peeks playlist contents',
+    'load <name>': 'Loads playlist contents',
+    'append <name>': 'Loads playlist contents',
     'playlists': 'Displays all the playlists',
-    'play': 'Adds song to queue',
+    'play <query / url>': 'Adds song to queue',
     'queue': 'Displays the queue',
-    'loop': 'Toggles queue looping',
+    'loop queue / queue loop': 'Toggles queue looping',
     'clear': 'Clears queue',
-    'remove': 'Removes song at provided index from queue',
-    'skip': 'Skips current song',
+    'remove <idx>': 'Removes song at provided index from queue',
+    'skip <idx?>': 'Skips current song or skips to provided index',
     'next': 'Skips current song',
     'pause': 'Pauses current song',
     'stop': 'Stops current song',
@@ -83,7 +83,7 @@ async def sendPlaylists(ctx, resp):
         content = 'No saved playlists'
     else:
         for idx, pl in enumerate(resp):
-            content += '**' + pl['name'] + '**' + f" ({pl['size']} songs)"
+            content += f'`{idx + 1}.` **' + pl['name'] + '**' + f" ({pl['size']} songs)"
             if idx < len(resp) - 1:
                 content += '\n'
 
@@ -99,12 +99,13 @@ async def printCommands(ctx):
         content = 'No saved playlists'
     else:
         for idx, cmd in enumerate(cmds.keys()):
-            content += '**' + cmd + '**' + f" | {cmds[cmd]}"
+            content += f'`{idx + 1}.` **' + cmd + '**\n' + f"> {cmds[cmd]}"
             if idx < len(cmds) - 1:
                 content += '\n'
 
     embed.description = content
     await ctx.channel.send(embed=embed)
+
 
 # EVENTS
 
@@ -271,7 +272,11 @@ async def playlists(ctx, *args):
     if not is_connected(ctx):
         await channel.connect()
         await ctx.guild.change_voice_state(channel=channel, self_deaf=True)
-    resp = firebase.getPlaylists()
+
+    SongQueue.setCtx(ctx)
+    SongQueue.setVoiceChannelID(ctx.author.voice.channel.id)
+
+    resp = firebase.getPlaylists(SongQueue.getVoiceChannelID())
     await sendPlaylists(ctx, resp)
 
 

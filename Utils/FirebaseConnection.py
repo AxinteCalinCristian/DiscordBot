@@ -53,8 +53,8 @@ class FirebaseConnection:
         data = data['song_urls']
         return True, data
 
-    def getPlaylists(self):
-        playlists = self._db.collection('playlists').get()
+    def getPlaylists(self, disc_id):
+        playlists = self._db.collection('playlists').where('discord_id', '==', disc_id).get()
         data = []
         for playlist in playlists:
             data.append({'name': playlist.to_dict()['name'], 'size': len(playlist.to_dict()['song_urls'])})
